@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BodyFat Scanner | AI Body Composition Tracker</title>
+<meta name="description" content="Open the link, look at the camera, get an instant AI body-fat estimate. Track daily selfies and weight — watch your progress build as data points." />
+<link rel="stylesheet" href="/static/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>🔬 BodyFat Scanner</h1>
+  <p class="tag">Look at the camera → get an AI body-composition estimate → log it daily and watch the trend.</p>
+</header>
+
+<main>
+  <!-- ============ SCAN PANEL ============ -->
+  <section class="panel" id="scan-panel">
+    <h2>1 · Scan</h2>
+    <div id="camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div id="camera-msg">Requesting camera…</div>
+    </div>
+    <div class="controls">
+      <button id="btn-capture" disabled>📸 Analyze Me</button>
+      <button id="btn-retry" class="secondary hidden">↻ Rescan</button>
+    </div>
+    <p class="hint">Stand back so your head and hips are visible. Good lighting helps.</p>
+  </section>
+
+  <!-- ============ PROFILE PANEL ============ -->
+  <section class="panel" id="profile-panel">
+    <h2>2 · Your Numbers</h2>
+    <div class="grid">
+      <label>Height (in) <input type="number" id="height" min="48" max="90" step="0.5" placeholder="70" /></label>
+      <label>Weight (lbs) <input type="number" id="weight" min="60" max="500" step="0.1" placeholder="170" /></label>
+      <label>Age <input type="number" id="age" min="13" max="100" placeholder="28" /></label>
+      <label>Sex
+        <select id="sex">
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <!-- ============ RESULT PANEL ============ -->
+  <section class="panel hidden" id="result-panel">
+    <h2>3 · Result</h2>
+    <div id="result-card">
+      <div id="bf-number">—</div>
+      <div id="bf-category">Analyzing…</div>
+      <div id="bf-detail"></div>
+    </div>
+    <div class="controls">
+      <button id="btn-save">💾 Save Today's Data Point</button>
+    </div>
+    <p class="disclaimer">Visual estimate for personal tracking only — not a medical measurement or medical advice. Use DEXA/calipers for clinical accuracy.</p>
+  </section>
+
+  <!-- ============ HISTORY PANEL ============ -->
+  <section class="panel" id="history-panel">
+    <h2>📈 Progress — every selfie is a data point</h2>
+    <canvas id="chart" height="120"></canvas>
+    <div id="entry-count" class="hint"></div>
+  </section>
+</main>
+
+<footer>
+  <p>Built by <a href="https://dandaakhilreddy.com" target="_blank">Akhil Reddy Danda</a> ·
+     <a href="https://github.com/DandaAkhilReddy/bodyfatscanner" target="_blank">GitHub</a> ·
+     Runs in your browser (MediaPipe Pose) · Backend: FastAPI + SQLite + Azure Blob</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
