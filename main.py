@@ -218,6 +218,7 @@ def verify_otp(body: OtpVerify):
             raise HTTPException(429, "Too many attempts — request a new code")
         if sha(code) != row["code_hash"]:
             conn.execute("UPDATE otps SET attempts = attempts + 1 WHERE email = ?", (email,))
+            conn.commit()  # persist the counter even though we raise next
             raise HTTPException(400, "Wrong code — try again")
         conn.execute("DELETE FROM otps WHERE email = ?", (email,))
         user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
@@ -296,9 +297,11 @@ def upsert_entry(entry: EntryIn, user=Depends(current_user)):
     if entry.video_base64:
         b64v = entry.video_base64.split(",")[-1]
         try:
-            rawv = base64.b64decode(b64v)
-        except Exception:
-            raise HTTPException(400, "Invalid video data")
+            rawv = base64.b64decode(b64v, validate=True)
+            if not rawv:
+                raise ValueError("empty")
+        except Exception as exc:
+            raise HTTPException(400, "Invalid video data") from exc
         if len(rawv) > 25_000_000:
             raise HTTPException(400, "Video too large (25MB max)")
         user_dir = os.path.join(IMAGES_DIR, uid)
@@ -312,9 +315,11 @@ def upsert_entry(entry: EntryIn, user=Depends(current_user)):
     if entry.image_base64:
         b64 = entry.image_base64.split(",")[-1]
         try:
-            raw = base64.b64decode(b64)
-        except Exception:
-            raise HTTPException(400, "Invalid image data")
+            raw = base64.b64decode(b64, validate=True)
+            if not raw:
+                raise ValueError("empty")
+        except Exception as exc:
+            raise HTTPException(400, "Invalid image data") from exc
         if len(raw) > 8_000_000:
             raise HTTPException(400, "Image too large")
         user_dir = os.path.join(IMAGES_DIR, uid)
