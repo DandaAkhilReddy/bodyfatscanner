@@ -366,6 +366,83 @@ async function renderCompare() {
 $("cmp-before").addEventListener("change", renderCompare);
 $("cmp-after").addEventListener("change", renderCompare);
 
+/* ================= SIX-PACK PLAN ================= */
+function sixPackPlan() {
+  const heightIn = parseFloat($("height").value), weightLbs = parseFloat($("weight").value);
+  const age = parseInt($("age").value, 10), sex = $("sex").value;
+  if (!heightIn || !weightLbs || !age) { alert("Fill in height, weight, and age in Your Numbers first."); return; }
+
+  // current bf%: manual field > latest scan > Deurenberg from BMI
+  let bf = parseFloat($("plan-bf").value);
+  if (!bf) {
+    const scans = entries.filter((e) => e.bf_percent != null);
+    if (scans.length) bf = scans[scans.length - 1].bf_percent;
+  }
+  const bmi = 703 * weightLbs / (heightIn * heightIn);
+  if (!bf) bf = Math.max(3, Math.min(60, 1.2 * bmi + 0.23 * age - (sex === "male" ? 10.8 : 0) - 5.4));
+
+  const kg = weightLbs / 2.2046, cm = heightIn * 2.54;
+  const activity = parseFloat($("plan-activity").value);
+  const deficit = Math.min(1000, parseInt($("plan-deficit").value, 10));
+  const proteinPerKg = parseFloat($("plan-protein").value);
+
+  // Mifflin-St Jeor BMR -> TDEE
+  const bmr = 10 * kg + 6.25 * cm - 5 * age + (sex === "male" ? 5 : -161);
+  const tdee = bmr * activity;
+
+  // target bf for visible six-pack; keep lean mass constant
+  const targetBf = sex === "male" ? 12 : 20;
+  if (bf <= targetBf) {
+    $("plan-result").innerHTML = `<div class="plan-hero"><div class="big">🎉 You're there!</div>
+      <div class="sub">At ~${bf.toFixed(1)}% you're already at six-pack territory (${targetBf}%). Maintain: eat ~${Math.round(tdee)} kcal/day, protein ${Math.round(proteinPerKg * kg)}g/day.</div></div>`;
+    $("plan-result").classList.remove("hidden");
+    return;
+  }
+  const leanKg = kg * (1 - bf / 100);
+  const goalKg = leanKg / (1 - targetBf / 100);
+  const fatLossKg = kg - goalKg;
+  const fatLossLbs = fatLossKg * 2.2046;
+  const totalKcal = fatLossLbs * 3500;
+  const days = Math.ceil(totalKcal / deficit);
+  const weeks = (days / 7).toFixed(1);
+  const doneDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+
+  // eating target with safety floor
+  const floor = sex === "male" ? 1500 : 1200;
+  let eatTarget = Math.round(tdee - deficit);
+  let floorNote = "";
+  if (eatTarget < floor) {
+    eatTarget = floor;
+    floorNote = ` (raised to the safe minimum of ${floor} kcal — cover the rest of your ${deficit} kcal deficit with exercise: ~${Math.round(deficit - (tdee - floor))} kcal of cardio/lifting)`;
+  }
+  const proteinG = Math.round(proteinPerKg * kg);
+  const proteinKcal = proteinG * 4;
+  const lossPerWeekLbs = (deficit * 7 / 3500).toFixed(1);
+
+  $("plan-result").innerHTML = `
+    <div class="plan-hero">
+      <div class="big">${days} days</div>
+      <div class="sub">to visible abs at ${targetBf}% body fat · target date <strong>${doneDate}</strong> · ${weeks} weeks at −${lossPerWeekLbs} lbs/week</div>
+    </div>
+    <div class="plan-cards">
+      <div class="plan-card"><div class="v">${fatLossLbs.toFixed(1)} lbs</div><div class="k">fat to lose (${fatLossKg.toFixed(1)} kg)</div></div>
+      <div class="plan-card"><div class="v">${Math.round(totalKcal).toLocaleString()}</div><div class="k">total kcal to burn</div></div>
+      <div class="plan-card"><div class="v">${Math.round(tdee)}</div><div class="k">your TDEE (kcal/day)</div></div>
+      <div class="plan-card"><div class="v">${eatTarget}</div><div class="k">eat this many kcal/day</div></div>
+      <div class="plan-card"><div class="v">${proteinG} g</div><div class="k">protein/day (${proteinPerKg} g/kg = ${proteinKcal} kcal)</div></div>
+      <div class="plan-card"><div class="v">${goalKg.toFixed(1)} kg</div><div class="k">goal weight (${(goalKg * 2.2046).toFixed(0)} lbs)</div></div>
+    </div>
+    <div class="plan-note">
+      <strong>Your daily playbook:</strong> eat <strong>${eatTarget} kcal</strong>${floorNote} with <strong>${proteinG}g protein</strong>
+      (≈ ${Math.round(proteinG / 31 * 100)}g chicken breast, or eggs + Greek yogurt + dal/paneer if veg) —
+      high protein protects muscle so the weight you lose is fat, not gains.
+      Hit your deficit with food first, add cardio to close the gap. Weigh in and scan daily here —
+      your Transformation Reel unlocks on day 15. 💪
+    </div>`;
+  $("plan-result").classList.remove("hidden");
+}
+$("btn-plan").addEventListener("click", sixPackPlan);
+
 /* ================= TRANSFORMATION REEL ================= */
 const REEL_DAYS = 15;
 

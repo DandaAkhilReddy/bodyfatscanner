@@ -104,3 +104,15 @@ button.mini.danger { background: #7f1d1d; }
 #reel-preview { width: 100%; max-width: 480px; border-radius: 12px; display: block; margin: 12px auto; background: #000; }
 .dl-btn { background: linear-gradient(90deg, var(--accent), #6d28d9); color: #fff; text-decoration: none;
   border-radius: 8px; padding: 12px 22px; font-weight: 600; display: inline-block; }
+
+/* ===== six-pack plan ===== */
+#plan-result { margin-top: 16px; }
+.plan-hero { text-align: center; padding: 14px; background: rgba(34,211,238,.06); border: 1px solid rgba(34,211,238,.25); border-radius: 12px; margin-bottom: 12px; }
+.plan-hero .big { font-size: 2.6rem; font-weight: 800; color: var(--accent2); }
+.plan-hero .sub { color: var(--dim); font-size: .9rem; }
+.plan-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.plan-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
+.plan-card .v { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+.plan-card .k { font-size: .75rem; color: var(--dim); margin-top: 4px; }
+.plan-note { margin-top: 12px; color: var(--dim); font-size: .85rem; line-height: 1.6; }
+.plan-note strong { color: var(--accent2); }
