@@ -46,6 +46,7 @@ SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER)
 AZURE_CONN = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 AZURE_CONTAINER = os.environ.get("AZURE_BLOB_CONTAINER", "selfies")
 
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 SESSION_DAYS = 90
 OTP_TTL_MIN = 10
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -410,6 +411,34 @@ def delete_entry(entry_id: str, user=Depends(current_user)):
         if p and os.path.exists(p):
             os.remove(p)
     return {"deleted": entry_id}
+
+
+# ---------------------------------------------------------------- admin (email set via env only)
+@app.get("/api/admin/stats")
+def admin_stats(user=Depends(current_user)):
+    if not ADMIN_EMAIL or user["email"].lower() != ADMIN_EMAIL:
+        raise HTTPException(403, "Not authorized")
+    with db() as conn:
+        users = [dict(r) for r in conn.execute(
+            "SELECT email, created_at FROM users ORDER BY created_at DESC LIMIT 200").fetchall()]
+        entries = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+    return {"total_users": len(users), "total_entries": entries, "recent_users": users}
+
+
+@app.delete("/api/admin/users/{email}")
+def admin_delete_user(email: str, user=Depends(current_user)):
+    if not ADMIN_EMAIL or user["email"].lower() != ADMIN_EMAIL:
+        raise HTTPException(403, "Not authorized")
+    email = email.lower()
+    with db() as conn:
+        r = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if not r:
+            raise HTTPException(404, "No such user")
+        uid = r["id"]
+        for t in ("sessions", "entries"):
+            conn.execute(f"DELETE FROM {t} WHERE user_id = ?", (uid,))
+        conn.execute("DELETE FROM users WHERE id = ?", (uid,))
+    return {"deleted": email}
 
 
 # ---------------------------------------------------------------- misc
