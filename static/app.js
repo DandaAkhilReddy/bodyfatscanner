@@ -6,6 +6,10 @@ let TOKEN = localStorage.getItem("rf_token") || "";
 let entries = [];
 let lastLandmarks = null, lastSnapshot = null, lastResult = null, chart = null;
 let cameraStarted = false;
+let lastVideoBlob = null;           // recorded scan video (webm)
+let recording = false;
+let recRatios = [];                  // pose ratios sampled during video scan
+let camStream = null;
 
 /* ================= AUTH ================= */
 async function api(path, opts = {}) {
@@ -88,11 +92,14 @@ async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {facingMode: "user", width: {ideal: 720}, height: {ideal: 960}}, audio: false});
+    camStream = stream;
     video.srcObject = stream;
     await video.play();
     overlay.width = video.videoWidth; overlay.height = video.videoHeight;
     $("camera-msg").style.display = "none";
     $("btn-capture").disabled = false;
+    $("btn-timer").disabled = false;
+    $("btn-video").disabled = false;
     detectLoop();
   } catch {
     $("camera-msg").textContent = "Camera unavailable — you can still log weight manually below.";
@@ -105,6 +112,12 @@ pose.onResults((results) => {
   octx.clearRect(0, 0, overlay.width, overlay.height);
   if (!results.poseLandmarks) { lastLandmarks = null; return; }
   lastLandmarks = results.poseLandmarks;
+  if (recording) {
+    const [ls, rs, lh, rh] = [11, 12, 23, 24].map((i) => lastLandmarks[i]);
+    if ([ls, rs, lh, rh].every((p) => p.visibility > .5)) {
+      recRatios.push(Math.hypot(lh.x-rh.x, lh.y-rh.y) / Math.hypot(ls.x-rs.x, ls.y-rs.y));
+    }
+  }
   const C = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
   octx.strokeStyle = "rgba(34,211,238,.85)"; octx.lineWidth = 3;
   C.forEach(([a,b]) => {
@@ -155,20 +168,99 @@ function categorize(bf, sex) {
   return "—";
 }
 
-$("btn-capture").addEventListener("click", () => {
+async function countdown(sec) {
+  const cd = $("countdown");
+  cd.classList.remove("hidden");
+  for (let i = sec; i > 0; i--) {
+    cd.textContent = i;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  cd.classList.add("hidden");
+}
+
+function snapshotNow() {
+  const snap = document.createElement("canvas");
+  snap.width = video.videoWidth; snap.height = video.videoHeight;
+  snap.getContext("2d").drawImage(video, 0, 0);
+  return snap.toDataURL("image/jpeg", 0.85);
+}
+
+function showResult(res, mediaLabel) {
+  lastResult = res;
+  $("bf-number").textContent = res.bf.toFixed(1) + "%";
+  $("bf-category").textContent = categorize(res.bf, res.sex);
+  $("bf-detail").textContent = `BMI ${res.bmi.toFixed(1)} · ${res.visualNote}${mediaLabel ? " · " + mediaLabel : ""}`;
+  $("result-panel").classList.remove("hidden");
+  $("btn-retry").classList.remove("hidden");
+  $("result-panel").scrollIntoView({behavior: "smooth"});
+}
+
+function captureInstant() {
+  const res = estimate(); if (!res) return;
+  lastVideoBlob = null;
+  lastSnapshot = snapshotNow();
+  showResult(res, "📸 photo");
+}
+
+$("btn-timer").addEventListener("click", async () => {
+  if (!$("height").value || !$("weight").value || !$("age").value) { alert("Fill in height, weight, and age first."); return; }
+  $("btn-timer").disabled = true;
+  await countdown(10);
+  captureInstant();
+  $("btn-timer").disabled = false;
+});
+
+$("btn-video").addEventListener("click", async () => {
+  if (!$("height").value || !$("weight").value || !$("age").value) { alert("Fill in height, weight, and age first."); return; }
+  if (!camStream) { alert("Camera not ready"); return; }
+  $("btn-video").disabled = true;
+  await countdown(5); // get in position
+  recRatios = []; recording = true; lastVideoBlob = null;
+  const chunks = [];
+  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+  const rec = new MediaRecorder(camStream, {mimeType: mime, videoBitsPerSecond: 1_200_000});
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const done = new Promise((r) => { rec.onstop = r; });
+  rec.start(250);
+  $("rec-badge").classList.remove("hidden");
+  let posterTaken = false;
+  const hints = ["face the camera", "hold…", "now turn slowly", "show your back", "keep turning", "back to front", "almost done…"];
+  for (let s = 0; s < 10; s++) {
+    $("rec-hint").textContent = hints[Math.min(Math.floor(s / 1.5), hints.length - 1)];
+    if (s === 2 && !posterTaken) { lastSnapshot = snapshotNow(); posterTaken = true; }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  rec.stop(); await done;
+  recording = false;
+  $("rec-badge").classList.add("hidden");
+  lastVideoBlob = new Blob(chunks, {type: "video/webm"});
+  // median ratio across the whole turn = far more stable than one frame
+  const res = estimate(); if (!res) { $("btn-video").disabled = false; return; }
+  if (recRatios.length >= 5) {
+    const sorted = [...recRatios].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const sex = res.sex;
+    const base = 1.2 * res.bmi + 0.23 * res.age - (sex === "male" ? 10.8 : 0) - 5.4;
+    const adj = Math.max(-6, Math.min(6, (median - (sex === "male" ? .72 : .8)) * 35));
+    res.bf = Math.max(3, Math.min(60, base + adj));
+    res.ratio = median;
+    res.visualNote = `🎥 video scan: ${recRatios.length} pose samples, median ratio ${median.toFixed(2)}`;
+  }
+  showResult(res, "🎥 video attached");
+  $("btn-video").disabled = false;
+});
+
+$("btn-capture").addEventListener("click", () => { captureInstant(); });
+
+// (legacy inline handler body replaced)
+function _unused() {
   const res = estimate(); if (!res) return;
   lastResult = res;
   const snap = document.createElement("canvas");
   snap.width = video.videoWidth; snap.height = video.videoHeight;
   snap.getContext("2d").drawImage(video, 0, 0);
   lastSnapshot = snap.toDataURL("image/jpeg", 0.85);
-  $("bf-number").textContent = res.bf.toFixed(1) + "%";
-  $("bf-category").textContent = categorize(res.bf, res.sex);
-  $("bf-detail").textContent = `BMI ${res.bmi.toFixed(1)} · ${res.visualNote}`;
-  $("result-panel").classList.remove("hidden");
-  $("btn-retry").classList.remove("hidden");
-  $("result-panel").scrollIntoView({behavior: "smooth"});
-});
+}
 $("btn-retry").addEventListener("click", () => {
   $("result-panel").classList.add("hidden"); $("btn-retry").classList.add("hidden");
 });
@@ -184,6 +276,11 @@ async function saveEntry(withPhoto) {
     waist_shoulder_ratio: res.ratio, notes: $("notes").value || null,
   };
   if (withPhoto && lastSnapshot) payload.image_base64 = lastSnapshot;
+  if (withPhoto && lastVideoBlob) {
+    payload.video_base64 = await new Promise((r) => {
+      const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(lastVideoBlob);
+    });
+  }
   const btn = withPhoto ? $("btn-save") : $("btn-save-manual");
   btn.disabled = true; const orig = btn.textContent; btn.textContent = "Saving…";
   try {
@@ -208,6 +305,7 @@ async function loadEntries() {
   $("entry-count").textContent = entries.length
     ? `${entries.length} day${entries.length > 1 ? "s" : ""} logged — consistency wins 🔥`
     : "No entries yet — scan and save your first day!";
+  updateReelPanel();
 
   // chart
   if (chart) chart.destroy();
@@ -238,7 +336,7 @@ async function loadEntries() {
 
   // history list
   $("history-list").innerHTML = entries.slice().reverse().map((e) =>
-    `<div class="hrow"><span class="hdate">${e.entry_date}${e.has_image ? " 📷" : ""}</span>
+    `<div class="hrow"><span class="hdate">${e.entry_date}${e.has_video ? " 🎥" : e.has_image ? " 📷" : ""}</span>
      <span>${e.weight_lbs ?? "—"} lbs</span><span>${e.bf_percent ?? "—"}% bf</span>
      <span class="hnotes">${e.notes || ""}</span>
      <button class="mini danger" data-del="${e.id}">✕</button></div>`).join("");
@@ -267,6 +365,173 @@ async function renderCompare() {
 }
 $("cmp-before").addEventListener("change", renderCompare);
 $("cmp-after").addEventListener("change", renderCompare);
+
+/* ================= TRANSFORMATION REEL ================= */
+const REEL_DAYS = 15;
+
+function journeySpan() {
+  const withImg = entries.filter((e) => e.has_image);
+  if (withImg.length < 2) return {days: 0, first: null, last: null};
+  const first = withImg[0], last = withImg[withImg.length - 1];
+  const days = Math.round((new Date(last.entry_date) - new Date(first.entry_date)) / 86400000);
+  return {days, first, last};
+}
+
+function updateReelPanel() {
+  const {days, first, last} = journeySpan();
+  const pct = Math.min(100, Math.round((days / REEL_DAYS) * 100));
+  $("reel-bar").style.width = pct + "%";
+  if (days >= REEL_DAYS && first && last) {
+    $("reel-locked").classList.add("hidden");
+    $("reel-ready").classList.remove("hidden");
+  } else {
+    $("reel-locked").classList.remove("hidden");
+    $("reel-ready").classList.add("hidden");
+    $("reel-status").textContent = !first
+      ? "Save daily photos to unlock your reel — day 15 is when the magic happens ✨"
+      : `Day ${days} of ${REEL_DAYS} — ${REEL_DAYS - days} more day${REEL_DAYS - days === 1 ? "" : "s"} until your transformation reel unlocks 🔓`;
+  }
+}
+
+function loadImg(url) {
+  return new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i); i.onerror = rej; i.src = url;
+  });
+}
+
+function drawFrame(ctx, W, H, t, imgA, imgB, A, B) {
+  /* t: 0..1 timeline. Phases: 0-.18 intro | .18-.42 before | .42-.6 morph | .6-.84 after | .84-1 outro */
+  ctx.fillStyle = "#0d1117"; ctx.fillRect(0, 0, W, H);
+  const drawCover = (img, alpha) => {
+    if (!img) return;
+    ctx.save(); ctx.globalAlpha = alpha;
+    const s = Math.max(W / img.width, (H - 200) / img.height);
+    const w = img.width * s, h = img.height * s;
+    ctx.translate(W, 0); ctx.scale(-1, 1); // mirror like the app
+    ctx.drawImage(img, (W - w) / 2, 110 + (H - 200 - h) / 2, w, h);
+    ctx.restore();
+  };
+  const header = (txt, sub) => {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#22d3ee"; ctx.font = "800 44px Inter, sans-serif";
+    ctx.fillText(txt, W / 2, 64);
+    if (sub) { ctx.fillStyle = "#8b949e"; ctx.font = "400 24px Inter, sans-serif"; ctx.fillText(sub, W / 2, 96); }
+  };
+  const statsBar = (e, label) => {
+    ctx.fillStyle = "rgba(13,17,23,.85)"; ctx.fillRect(0, H - 90, W, 90);
+    ctx.textAlign = "center"; ctx.fillStyle = "#e6edf3"; ctx.font = "700 30px Inter, sans-serif";
+    ctx.fillText(`${label} · ${e.entry_date}`, W / 2, H - 52);
+    ctx.fillStyle = "#22d3ee"; ctx.font = "600 26px Inter, sans-serif";
+    ctx.fillText(`${e.weight_lbs ?? "—"} lbs   ·   ${e.bf_percent ?? "—"}% body fat`, W / 2, H - 16);
+  };
+  if (t < .18) {
+    const k = t / .18;
+    ctx.textAlign = "center"; ctx.globalAlpha = Math.min(1, k * 2);
+    ctx.fillStyle = "#e6edf3"; ctx.font = "800 58px Inter, sans-serif";
+    ctx.fillText("💪 Reddy-Fit", W / 2, H / 2 - 40);
+    ctx.fillStyle = "#22d3ee"; ctx.font = "700 40px Inter, sans-serif";
+    ctx.fillText("MY TRANSFORMATION", W / 2, H / 2 + 24);
+    ctx.fillStyle = "#8b949e"; ctx.font = "400 26px Inter, sans-serif";
+    const days = Math.round((new Date(B.entry_date) - new Date(A.entry_date)) / 86400000);
+    ctx.fillText(`${days} days · one photo at a time`, W / 2, H / 2 + 72);
+    ctx.globalAlpha = 1;
+  } else if (t < .42) {
+    drawCover(imgA, 1); header("DAY 1", "where it started"); statsBar(A, "BEFORE");
+  } else if (t < .6) {
+    const k = (t - .42) / .18;
+    drawCover(imgA, 1 - k); drawCover(imgB, k);
+    header("THE GRIND", "every single day");
+  } else if (t < .84) {
+    drawCover(imgB, 1); header("TODAY", "look at you now"); statsBar(B, "AFTER");
+  } else {
+    drawCover(imgB, .25);
+    const dw = (B.weight_lbs != null && A.weight_lbs != null) ? B.weight_lbs - A.weight_lbs : null;
+    const db = (B.bf_percent != null && A.bf_percent != null) ? B.bf_percent - A.bf_percent : null;
+    ctx.textAlign = "center"; ctx.fillStyle = "#e6edf3"; ctx.font = "800 46px Inter, sans-serif";
+    ctx.fillText("THE RESULT", W / 2, H / 2 - 90);
+    ctx.font = "800 56px Inter, sans-serif"; ctx.fillStyle = "#22c55e";
+    if (dw != null) ctx.fillText(`${dw > 0 ? "+" : ""}${dw.toFixed(1)} lbs`, W / 2, H / 2 - 10);
+    if (db != null) ctx.fillText(`${db > 0 ? "+" : ""}${db.toFixed(1)}% body fat`, W / 2, H / 2 + 60);
+    ctx.fillStyle = "#8b949e"; ctx.font = "400 26px Inter, sans-serif";
+    ctx.fillText("tracked with Reddy-Fit Body Scanner", W / 2, H / 2 + 130);
+  }
+}
+
+async function generateReel() {
+  const {first, last} = journeySpan();
+  if (!first || !last) return;
+  const btn = $("btn-make-reel");
+  btn.disabled = true; btn.textContent = "🎬 Rendering…";
+  try {
+    const [ua, ub] = await Promise.all([authedImageURL(first.id), authedImageURL(last.id)]);
+    const [imgA, imgB] = await Promise.all([loadImg(ua), loadImg(ub)]);
+    const canvas = $("reel-canvas"), ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    const stream = canvas.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+    const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 4_000_000});
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    const done = new Promise((r) => { rec.onstop = r; });
+    rec.start(200);
+    const DUR = 12000, t0 = performance.now();
+    await new Promise((resolve) => {
+      const frame = (now) => {
+        const t = Math.min(1, (now - t0) / DUR);
+        drawFrame(ctx, W, H, t, imgA, imgB, first, last);
+        if (t < 1) requestAnimationFrame(frame); else resolve();
+      };
+      requestAnimationFrame(frame);
+    });
+    rec.stop(); await done;
+    const blob = new Blob(chunks, {type: "video/webm"});
+    const url = URL.createObjectURL(blob);
+    $("reel-preview").src = url;
+    $("reel-download").href = url;
+    $("reel-output").classList.remove("hidden");
+    $("reel-preview").play().catch(() => {});
+  } catch (e) {
+    alert("Could not render reel: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "🎬 Generate My Reel";
+  }
+}
+
+async function generateShareCard() {
+  const {first, last, days} = journeySpan();
+  if (!first || !last) return;
+  const [ua, ub] = await Promise.all([authedImageURL(first.id), authedImageURL(last.id)]);
+  const [imgA, imgB] = await Promise.all([loadImg(ua), loadImg(ub)]);
+  const c = document.createElement("canvas"); c.width = 1080; c.height = 720;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#0d1117"; ctx.fillRect(0, 0, 1080, 720);
+  const half = (img, x) => {
+    const s = Math.max(500 / img.width, 520 / img.height);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, 120, 500, 520); ctx.clip();
+    ctx.translate(x + 500, 0); ctx.scale(-1, 1);
+    ctx.drawImage(img, (500 - img.width * s) / 2, 120 + (520 - img.height * s) / 2, img.width * s, img.height * s);
+    ctx.restore();
+  };
+  half(imgA, 30); half(imgB, 550);
+  ctx.textAlign = "center"; ctx.fillStyle = "#22d3ee"; ctx.font = "800 44px Inter, sans-serif";
+  ctx.fillText(`💪 ${days}-DAY TRANSFORMATION`, 540, 70);
+  ctx.fillStyle = "#e6edf3"; ctx.font = "700 30px Inter, sans-serif";
+  ctx.fillText(`${first.entry_date} · ${first.weight_lbs ?? "—"} lbs`, 280, 685);
+  ctx.fillText(`${last.entry_date} · ${last.weight_lbs ?? "—"} lbs`, 800, 685);
+  const dw = (last.weight_lbs != null && first.weight_lbs != null) ? last.weight_lbs - first.weight_lbs : null;
+  if (dw != null) {
+    ctx.fillStyle = "#22c55e"; ctx.font = "800 36px Inter, sans-serif";
+    ctx.fillText(`${dw > 0 ? "+" : ""}${dw.toFixed(1)} lbs`, 540, 400);
+  }
+  const a = document.createElement("a");
+  a.download = "reddyfit-transformation.png";
+  a.href = c.toDataURL("image/png");
+  a.click();
+}
+
+$("btn-make-reel").addEventListener("click", generateReel);
+$("btn-make-card").addEventListener("click", generateShareCard);
 
 /* ================= BOOT ================= */
 (async () => {

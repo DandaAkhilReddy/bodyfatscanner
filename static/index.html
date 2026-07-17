@@ -44,16 +44,22 @@
   <!-- ============ SCAN ============ -->
   <section class="panel" id="scan-panel">
     <h2>1 · Today's Scan <span id="today-label" class="pill"></span></h2>
+    <div class="tipbox">🎯 <strong>For the most accurate scan:</strong> form-fitting or minimal clothing — sports bra for women, shirtless preferred for men (not mandatory). Stand 6–8 ft back, full torso visible, good lighting.</div>
     <div id="camera-wrap">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
       <div id="camera-msg">Requesting camera…</div>
+      <div id="countdown" class="hidden"></div>
+      <div id="rec-badge" class="hidden">● REC <span id="rec-hint">face the camera</span></div>
     </div>
     <div class="controls">
-      <button id="btn-capture" disabled>📸 Analyze Me</button>
+      <button id="btn-capture" disabled>📸 Instant</button>
+      <button id="btn-timer" disabled>⏱ 10s Timer</button>
+      <button id="btn-video" disabled>🎥 Video Scan</button>
       <button id="btn-retry" class="secondary hidden">↻ Rescan</button>
     </div>
-    <p class="hint">One photo per day becomes your data point. Saving again replaces today's entry.</p>
+    <p class="hint">One photo <em>or</em> video per day is your data point — saving again replaces today's.
+       Video scan records 10s: face the camera first, then turn around slowly for a front + back scan.</p>
   </section>
 
   <!-- ============ NUMBERS ============ -->
@@ -103,6 +109,29 @@
       <div class="compare-card"><img id="cmp-img-before" alt="Before" /><div id="cmp-stats-before"></div></div>
       <div class="compare-delta" id="cmp-delta"></div>
       <div class="compare-card"><img id="cmp-img-after" alt="After" /><div id="cmp-stats-after"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ TRANSFORMATION ============ -->
+  <section class="panel" id="reel-panel">
+    <h2>✨ Transformation Reel</h2>
+    <div id="reel-locked">
+      <div class="reel-progress"><div id="reel-bar"></div></div>
+      <p class="hint" id="reel-status">Log your first day to start the 15-day journey.</p>
+    </div>
+    <div id="reel-ready" class="hidden">
+      <p class="hint-left">Your journey is ready to render — an animated Day 1 → today reel with your stats, made to share.</p>
+      <div class="controls">
+        <button id="btn-make-reel">🎬 Generate My Reel</button>
+        <button id="btn-make-card" class="secondary">🖼️ Share Card (PNG)</button>
+      </div>
+      <div id="reel-output" class="hidden">
+        <canvas id="reel-canvas" width="720" height="900" class="hidden"></canvas>
+        <video id="reel-preview" controls playsinline></video>
+        <div class="controls">
+          <a id="reel-download" class="dl-btn" download="reddyfit-transformation.webm">⬇️ Download Reel</a>
+        </div>
+      </div>
     </div>
   </section>
 

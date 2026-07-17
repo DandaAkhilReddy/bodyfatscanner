@@ -11,6 +11,8 @@ returns the code in the API response (fine for personal/friends use;
 add SMTP creds for real email delivery).
 """
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import os
@@ -22,8 +24,6 @@ import time
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from email.mime.text import MIMEText
-from typing import Optional
-
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -100,6 +100,8 @@ def init_db() -> None:
                 bmi REAL,
                 waist_shoulder_ratio REAL,
                 image_path TEXT,
+                video_path TEXT,
+                media_type TEXT DEFAULT 'photo',
                 azure_blob_url TEXT,
                 notes TEXT,
                 UNIQUE(user_id, entry_date)
@@ -109,6 +111,18 @@ def init_db() -> None:
 
 
 init_db()
+
+
+def _migrate() -> None:
+    with db() as conn:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(entries)").fetchall()]
+        if "video_path" not in cols:
+            conn.execute("ALTER TABLE entries ADD COLUMN video_path TEXT")
+        if "media_type" not in cols:
+            conn.execute("ALTER TABLE entries ADD COLUMN media_type TEXT DEFAULT 'photo'")
+
+
+_migrate()
 
 
 def sha(s: str) -> str:
@@ -238,18 +252,19 @@ def me(user=Depends(current_user)):
 # ---------------------------------------------------------------- entries
 class EntryIn(BaseModel):
     entry_date: str = Field(default_factory=lambda: date.today().isoformat())
-    weight_lbs: Optional[float] = None
-    height_in: Optional[float] = None
-    age: Optional[int] = None
-    sex: Optional[str] = None
-    bf_percent: Optional[float] = None
-    bmi: Optional[float] = None
-    waist_shoulder_ratio: Optional[float] = None
-    image_base64: Optional[str] = None
-    notes: Optional[str] = None
+    weight_lbs: float | None = None
+    height_in: float | None = None
+    age: int | None = None
+    sex: str | None = None
+    bf_percent: float | None = None
+    bmi: float | None = None
+    waist_shoulder_ratio: float | None = None
+    image_base64: str | None = None
+    video_base64: str | None = None
+    notes: str | None = None
 
 
-def upload_to_azure(filename: str, raw: bytes) -> Optional[str]:
+def upload_to_azure(filename: str, raw: bytes) -> str | None:
     if not AZURE_CONN:
         return None
     try:
@@ -273,7 +288,25 @@ def upsert_entry(entry: EntryIn, user=Depends(current_user)):
     uid = user["id"]
     entry_id = secrets.token_hex(16)
     image_path = None
+    video_path = None
+    media_type = "photo"
     azure_url = None
+
+    if entry.video_base64:
+        b64v = entry.video_base64.split(",")[-1]
+        try:
+            rawv = base64.b64decode(b64v)
+        except Exception:
+            raise HTTPException(400, "Invalid video data")
+        if len(rawv) > 25_000_000:
+            raise HTTPException(400, "Video too large (25MB max)")
+        user_dir = os.path.join(IMAGES_DIR, uid)
+        os.makedirs(user_dir, exist_ok=True)
+        video_path = os.path.join(user_dir, f"{entry.entry_date}.webm")
+        with open(video_path, "wb") as f:
+            f.write(rawv)
+        upload_to_azure(f"{uid}/{entry.entry_date}.webm", rawv)
+        media_type = "video"
 
     if entry.image_base64:
         b64 = entry.image_base64.split(",")[-1]
@@ -292,29 +325,34 @@ def upsert_entry(entry: EntryIn, user=Depends(current_user)):
 
     with db() as conn:
         old = conn.execute(
-            "SELECT id, image_path FROM entries WHERE user_id = ? AND entry_date = ?",
+            "SELECT id, image_path, video_path, media_type FROM entries WHERE user_id = ? AND entry_date = ?",
             (uid, entry.entry_date),
         ).fetchone()
         if old:
             entry_id = old["id"]
             image_path = image_path or old["image_path"]
+            video_path = video_path or old["video_path"]
+            if not entry.video_base64 and not entry.image_base64:
+                media_type = old["media_type"] or "photo"
         conn.execute(
             """INSERT INTO entries
                (id, user_id, entry_date, created_at, weight_lbs, height_in, age, sex,
-                bf_percent, bmi, waist_shoulder_ratio, image_path, azure_blob_url, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                bf_percent, bmi, waist_shoulder_ratio, image_path, video_path, media_type,
+                azure_blob_url, notes)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(user_id, entry_date) DO UPDATE SET
                  created_at=excluded.created_at, weight_lbs=excluded.weight_lbs,
                  height_in=excluded.height_in, age=excluded.age, sex=excluded.sex,
                  bf_percent=excluded.bf_percent, bmi=excluded.bmi,
                  waist_shoulder_ratio=excluded.waist_shoulder_ratio,
-                 image_path=excluded.image_path, azure_blob_url=excluded.azure_blob_url,
+                 image_path=excluded.image_path, video_path=excluded.video_path,
+                 media_type=excluded.media_type, azure_blob_url=excluded.azure_blob_url,
                  notes=excluded.notes""",
             (
                 entry_id, uid, entry.entry_date, datetime.utcnow().isoformat(),
                 entry.weight_lbs, entry.height_in, entry.age, entry.sex,
                 entry.bf_percent, entry.bmi, entry.waist_shoulder_ratio,
-                image_path, azure_url, entry.notes,
+                image_path, video_path, media_type, azure_url, entry.notes,
             ),
         )
     return {"id": entry_id, "entry_date": entry.entry_date, "replaced": bool(old)}
@@ -325,8 +363,9 @@ def list_entries(user=Depends(current_user), limit: int = 730):
     with db() as conn:
         rows = conn.execute(
             """SELECT id, entry_date, weight_lbs, height_in, age, sex, bf_percent,
-                      bmi, waist_shoulder_ratio, notes,
-                      CASE WHEN image_path IS NOT NULL THEN 1 ELSE 0 END AS has_image
+                      bmi, waist_shoulder_ratio, notes, media_type,
+                      CASE WHEN image_path IS NOT NULL THEN 1 ELSE 0 END AS has_image,
+                      CASE WHEN video_path IS NOT NULL THEN 1 ELSE 0 END AS has_video
                FROM entries WHERE user_id = ? ORDER BY entry_date ASC LIMIT ?""",
             (user["id"], limit),
         ).fetchall()
@@ -345,18 +384,31 @@ def entry_image(entry_id: str, user=Depends(current_user)):
     return FileResponse(row["image_path"], media_type="image/jpeg")
 
 
+@app.get("/api/entries/{entry_id}/video")
+def entry_video(entry_id: str, user=Depends(current_user)):
+    with db() as conn:
+        row = conn.execute(
+            "SELECT video_path FROM entries WHERE id = ? AND user_id = ?",
+            (entry_id, user["id"]),
+        ).fetchone()
+    if not row or not row["video_path"] or not os.path.exists(row["video_path"]):
+        raise HTTPException(404, "No video for this day")
+    return FileResponse(row["video_path"], media_type="video/webm")
+
+
 @app.delete("/api/entries/{entry_id}")
 def delete_entry(entry_id: str, user=Depends(current_user)):
     with db() as conn:
         row = conn.execute(
-            "SELECT image_path FROM entries WHERE id = ? AND user_id = ?",
+            "SELECT image_path, video_path FROM entries WHERE id = ? AND user_id = ?",
             (entry_id, user["id"]),
         ).fetchone()
         if not row:
             raise HTTPException(404, "Entry not found")
         conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
-    if row["image_path"] and os.path.exists(row["image_path"]):
-        os.remove(row["image_path"])
+    for p in (row["image_path"], row["video_path"]):
+        if p and os.path.exists(p):
+            os.remove(p)
     return {"deleted": entry_id}
 
 

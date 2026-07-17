@@ -1,4 +1,4 @@
-# 💪 Reddy-Fit Body Scanner
+# 🔬 BodyFat Scanner
 
 **Open the link → camera turns on → AI looks at you → instant body-fat estimate.**
 Take a selfie and log your weight every day — each entry is a labeled data point, and the trend chart shows your progress over time.

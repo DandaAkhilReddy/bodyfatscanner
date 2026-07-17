@@ -88,3 +88,19 @@ button.mini.danger { background: #7f1d1d; }
 .hdate { color: var(--accent2); }
 .hnotes { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) { .hrow { grid-template-columns: 100px 70px 70px 1fr 34px; font-size: .8rem; } }
+
+/* ===== v3: countdown, video, reel ===== */
+#countdown { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 7rem; font-weight: 800; color: #fff; text-shadow: 0 0 30px rgba(34,211,238,.9);
+  background: rgba(0,0,0,.35); z-index: 5; }
+#rec-badge { position: absolute; top: 12px; left: 12px; z-index: 5; background: rgba(220,38,38,.9);
+  color: #fff; padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: .85rem; animation: blink 1.2s infinite; }
+#rec-badge span { font-weight: 400; opacity: .9; }
+@keyframes blink { 50% { opacity: .55; } }
+.tipbox { background: rgba(34,211,238,.08); border: 1px solid rgba(34,211,238,.25); border-radius: 10px;
+  padding: 10px 14px; font-size: .85rem; color: var(--text); margin-bottom: 12px; line-height: 1.5; }
+.reel-progress { background: var(--bg); border: 1px solid var(--border); border-radius: 999px; height: 14px; overflow: hidden; margin-bottom: 10px; }
+#reel-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .6s; }
+#reel-preview { width: 100%; max-width: 480px; border-radius: 12px; display: block; margin: 12px auto; background: #000; }
+.dl-btn { background: linear-gradient(90deg, var(--accent), #6d28d9); color: #fff; text-decoration: none;
+  border-radius: 8px; padding: 12px 22px; font-weight: 600; display: inline-block; }
