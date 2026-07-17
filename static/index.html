@@ -3,22 +3,47 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>BodyFat Scanner | AI Body Composition Tracker</title>
-<meta name="description" content="Open the link, look at the camera, get an instant AI body-fat estimate. Track daily selfies and weight — watch your progress build as data points." />
+<title>Reddy-Fit Body Scanner | AI Body Composition Tracker</title>
+<meta name="description" content="Log in with your email, look at the camera, get an AI body-fat estimate. One selfie + weight per day — watch your transformation with before/after comparisons." />
 <link rel="stylesheet" href="/static/style.css" />
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 <header>
-  <h1>🔬 BodyFat Scanner</h1>
-  <p class="tag">Look at the camera → get an AI body-composition estimate → log it daily and watch the trend.</p>
+  <h1>💪 Reddy-Fit Body Scanner</h1>
+  <p class="tag">Scan daily · Track weight · Compare your before &amp; after</p>
+  <div id="user-chip" class="hidden">
+    <span id="user-email"></span>
+    <button id="btn-logout" class="mini">Log out</button>
+  </div>
 </header>
 
-<main>
-  <!-- ============ SCAN PANEL ============ -->
+<!-- ============ LOGIN ============ -->
+<section class="panel auth-panel" id="login-panel">
+  <h2>Sign in to your scanner</h2>
+  <div id="step-email">
+    <p class="hint-left">Enter your email — we'll send you a 6-digit login code. No password needed.</p>
+    <div class="authrow">
+      <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+      <button id="btn-send-otp">Send code</button>
+    </div>
+  </div>
+  <div id="step-otp" class="hidden">
+    <p class="hint-left">Enter the 6-digit code sent to <strong id="otp-email-label"></strong></p>
+    <div class="authrow">
+      <input type="text" id="login-otp" inputmode="numeric" maxlength="6" placeholder="123456" />
+      <button id="btn-verify-otp">Verify &amp; enter</button>
+    </div>
+    <p class="hint-left"><a href="#" id="btn-back-email">Use a different email</a></p>
+  </div>
+  <p id="auth-msg" class="hint-left"></p>
+</section>
+
+<main id="app" class="hidden">
+  <!-- ============ SCAN ============ -->
   <section class="panel" id="scan-panel">
-    <h2>1 · Scan</h2>
+    <h2>1 · Today's Scan <span id="today-label" class="pill"></span></h2>
     <div id="camera-wrap">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
@@ -28,51 +53,70 @@
       <button id="btn-capture" disabled>📸 Analyze Me</button>
       <button id="btn-retry" class="secondary hidden">↻ Rescan</button>
     </div>
-    <p class="hint">Stand back so your head and hips are visible. Good lighting helps.</p>
+    <p class="hint">One photo per day becomes your data point. Saving again replaces today's entry.</p>
   </section>
 
-  <!-- ============ PROFILE PANEL ============ -->
-  <section class="panel" id="profile-panel">
-    <h2>2 · Your Numbers</h2>
+  <!-- ============ NUMBERS ============ -->
+  <section class="panel">
+    <h2>2 · Your Numbers <span class="pill">manual entry welcome</span></h2>
     <div class="grid">
       <label>Height (in) <input type="number" id="height" min="48" max="90" step="0.5" placeholder="70" /></label>
       <label>Weight (lbs) <input type="number" id="weight" min="60" max="500" step="0.1" placeholder="170" /></label>
       <label>Age <input type="number" id="age" min="13" max="100" placeholder="28" /></label>
       <label>Sex
-        <select id="sex">
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-        </select>
+        <select id="sex"><option value="male">Male</option><option value="female">Female</option></select>
       </label>
+    </div>
+    <label class="noteslabel">Notes (optional) <input type="text" id="notes" placeholder="fasted, post-workout, cheat day…" /></label>
+    <div class="controls">
+      <button id="btn-save-manual" class="secondary">💾 Save weight only (no photo)</button>
     </div>
   </section>
 
-  <!-- ============ RESULT PANEL ============ -->
+  <!-- ============ RESULT ============ -->
   <section class="panel hidden" id="result-panel">
     <h2>3 · Result</h2>
     <div id="result-card">
       <div id="bf-number">—</div>
-      <div id="bf-category">Analyzing…</div>
+      <div id="bf-category"></div>
       <div id="bf-detail"></div>
     </div>
-    <div class="controls">
-      <button id="btn-save">💾 Save Today's Data Point</button>
-    </div>
-    <p class="disclaimer">Visual estimate for personal tracking only — not a medical measurement or medical advice. Use DEXA/calipers for clinical accuracy.</p>
+    <div class="controls"><button id="btn-save">💾 Save Today's Data Point</button></div>
+    <p class="disclaimer">Visual estimate for personal tracking only — not a medical measurement or medical advice.</p>
   </section>
 
-  <!-- ============ HISTORY PANEL ============ -->
-  <section class="panel" id="history-panel">
-    <h2>📈 Progress — every selfie is a data point</h2>
+  <!-- ============ PROGRESS ============ -->
+  <section class="panel">
+    <h2>📈 Progress</h2>
     <canvas id="chart" height="120"></canvas>
     <div id="entry-count" class="hint"></div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="panel" id="compare-panel">
+    <h2>🔀 Before / After</h2>
+    <div class="compare-pickers">
+      <label>Before <select id="cmp-before"></select></label>
+      <label>After <select id="cmp-after"></select></label>
+    </div>
+    <div class="compare-grid">
+      <div class="compare-card"><img id="cmp-img-before" alt="Before" /><div id="cmp-stats-before"></div></div>
+      <div class="compare-delta" id="cmp-delta"></div>
+      <div class="compare-card"><img id="cmp-img-after" alt="After" /><div id="cmp-stats-after"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="panel">
+    <h2>🗓️ All Entries</h2>
+    <div id="history-list"></div>
   </section>
 </main>
 
 <footer>
-  <p>Built by <a href="https://dandaakhilreddy.com" target="_blank">Akhil Reddy Danda</a> ·
+  <p>Reddy-Fit by <a href="https://dandaakhilreddy.com" target="_blank">Akhil Reddy Danda</a> ·
      <a href="https://github.com/DandaAkhilReddy/bodyfatscanner" target="_blank">GitHub</a> ·
-     Runs in your browser (MediaPipe Pose) · Backend: FastAPI + SQLite + Azure Blob</p>
+     Pose AI runs in your browser · Your photos are private to your account</p>
 </footer>
 
 <script src="/static/app.js"></script>
