@@ -116,3 +116,27 @@ button.mini.danger { background: #7f1d1d; }
 .plan-card .k { font-size: .75rem; color: var(--dim); margin-top: 4px; }
 .plan-note { margin-top: 12px; color: var(--dim); font-size: .85rem; line-height: 1.6; }
 .plan-note strong { color: var(--accent2); }
+
+/* ===== mobile responsive ===== */
+@media (max-width: 560px) {
+  header { padding: 22px 12px 6px; }
+  header h1 { font-size: 1.45rem; }
+  .tag { font-size: .85rem; }
+  main { padding: 10px; gap: 12px; }
+  .panel { padding: 14px; border-radius: 10px; }
+  .panel h2 { font-size: .98rem; }
+  .controls { flex-wrap: wrap; gap: 8px; }
+  .controls button { flex: 1 1 46%; font-size: .88rem; padding: 12px 8px; }
+  .authrow { flex-direction: column; }
+  .authrow button { width: 100%; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 9px; }
+  #camera-wrap { max-height: 62vh; }
+  #countdown { font-size: 4.5rem; }
+  .compare-grid { grid-template-columns: 1fr; }
+  .compare-delta { display: flex; gap: 14px; justify-content: center; align-items: baseline; padding: 4px 0; }
+  .plan-cards { grid-template-columns: 1fr 1fr; }
+  .pill { display: inline-block; margin: 4px 0 0 0; }
+  .hrow { grid-template-columns: 92px 62px 62px 1fr 30px; font-size: .78rem; }
+  #reel-preview { max-width: 100%; }
+  footer { font-size: .72rem; }
+}
