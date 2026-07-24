@@ -89,9 +89,15 @@ const video = $("video"), overlay = $("overlay"), octx = overlay.getContext("2d"
 
 async function startCamera() {
   cameraStarted = true;
+  // If the permission prompt is ignored/blocked, don't hang on "Requesting camera…" forever.
+  const fallbackTimer = setTimeout(() => {
+    if (!camStream) $("camera-msg").textContent =
+      "Camera not available (blocked or no permission) — you can still log weight manually below, and enable the camera anytime from your browser's site settings.";
+  }, 12000);
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {facingMode: "user", width: {ideal: 720}, height: {ideal: 960}}, audio: false});
+    clearTimeout(fallbackTimer);
     camStream = stream;
     video.srcObject = stream;
     await video.play();
@@ -102,6 +108,7 @@ async function startCamera() {
     $("btn-video").disabled = false;
     detectLoop();
   } catch {
+    clearTimeout(fallbackTimer);
     $("camera-msg").textContent = "Camera unavailable — you can still log weight manually below.";
   }
 }
