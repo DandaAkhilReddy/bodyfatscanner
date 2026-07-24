@@ -3,17 +3,21 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Reddy-Fit Body Scanner | AI Body Composition Tracker</title>
-<meta name="description" content="Log in with your email, look at the camera, get an AI body-fat estimate. One selfie + weight per day — watch your transformation with before/after comparisons." />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234f46e5'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='4' y='4' width='92' height='92' rx='24' fill='url(%23g)'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial' font-weight='800' font-size='40' fill='white'%3ERF%3C/text%3E%3C/svg%3E" />
-<link rel="stylesheet" href="/static/style.css" />
+<title>Reddy-Fit Body Scanner | Daily Video Body Tracker</title>
+<meta name="description" content="Record a 10-second body scan every day. AI reads your posture, tracks weight & body-fat, and stitches your day-1→today transformation reel. Private to your account, stored durably in the cloud." />
+<meta name="theme-color" content="#070a12" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%234f46e5'/%3E%3Cstop offset='.5' stop-color='%237c3aed'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='4' y='4' width='92' height='92' rx='24' fill='url(%23g)'/%3E%3Ctext x='50' y='66' text-anchor='middle' font-family='Arial' font-weight='800' font-size='38' fill='white'%3ERF%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=3" />
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 <header>
-  <h1>💪 Reddy-Fit Body Scanner</h1>
-  <p class="tag">Scan daily · Track weight · Compare your before &amp; after</p>
+  <h1>Reddy-Fit</h1>
+  <p class="tag">Record a 10-second body scan every day. Watch yourself transform.</p>
   <div id="user-chip" class="hidden">
     <span id="user-email"></span>
     <button id="btn-logout" class="mini">Log out</button>
@@ -42,30 +46,48 @@
 </section>
 
 <main id="app" class="hidden">
-  <!-- ============ SCAN ============ -->
-  <section class="panel" id="scan-panel">
-    <h2>1 · Today's Scan <span id="today-label" class="pill"></span></h2>
-    <div class="tipbox">🎯 <strong>For the most accurate scan:</strong> form-fitting or minimal clothing — sports bra for women, shirtless preferred for men (not mandatory). Stand 6–8 ft back, full torso visible, good lighting.</div>
+  <!-- ============ HERO · DAILY VIDEO SCAN ============ -->
+  <section class="panel hero" id="scan-panel">
+    <div class="hero-head">
+      <h2>🎥 Today's Body Scan <span id="today-label" class="pill"></span></h2>
+      <span class="hero-badge">Daily Habit</span>
+    </div>
+
+    <div class="streak-bar">
+      <div class="stat-chip"><div class="v" id="stat-streak">0</div><div class="k">🔥 Day streak</div></div>
+      <div class="stat-chip"><div class="v" id="stat-total">0</div><div class="k">Scans logged</div></div>
+      <div class="stat-chip"><div class="v" id="stat-videos">0</div><div class="k">🎥 Video days</div></div>
+      <div class="stat-chip"><div class="v" id="stat-today">—</div><div class="k">Today</div></div>
+    </div>
+
+    <div class="tipbox">🎯 <strong>Best accuracy:</strong> form-fitting or minimal clothing, stand 6–8 ft back with your full torso in frame, good lighting. The video scan records 10s — face the camera, then turn slowly for a front + back read.</div>
+
     <div id="camera-wrap">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="overlay"></canvas>
       <div id="camera-msg">Requesting camera…</div>
       <div id="countdown" class="hidden"></div>
-      <div id="rec-badge" class="hidden">● REC <span id="rec-hint">face the camera</span></div>
+      <div id="rec-badge" class="hidden">REC <span id="rec-hint">face the camera</span></div>
     </div>
+
     <div class="controls">
-      <button id="btn-capture" disabled>📸 Instant</button>
-      <button id="btn-timer" disabled>⏱ 10s Timer</button>
-      <button id="btn-video" disabled>🎥 Video Scan</button>
+      <button id="btn-video" disabled>🎥 Record Daily Video Scan</button>
+      <button id="btn-timer" class="secondary" disabled>⏱ 10s Photo</button>
+      <button id="btn-capture" class="secondary" disabled>📸 Instant Photo</button>
       <button id="btn-retry" class="secondary hidden">↻ Rescan</button>
     </div>
-    <p class="hint">One photo <em>or</em> video per day is your data point — saving again replaces today's.
-       Video scan records 10s: face the camera first, then turn around slowly for a front + back scan.</p>
+    <p class="hint">Your daily video is the star — it's saved as your data point for the day and powers your transformation reel. One scan per day; scanning again replaces today's.</p>
+  </section>
+
+  <!-- ============ DAILY VIDEO TIMELINE ============ -->
+  <section class="panel" id="timeline-panel">
+    <h2>🎞️ Your Daily Scan Timeline <span class="pill">tap any day to replay</span></h2>
+    <div id="video-timeline"></div>
   </section>
 
   <!-- ============ NUMBERS ============ -->
   <section class="panel">
-    <h2>2 · Your Numbers <span class="pill">manual entry welcome</span></h2>
+    <h2>📏 Your Numbers <span class="pill">manual entry welcome</span></h2>
     <div class="grid">
       <label>Height (in) <input type="number" id="height" min="48" max="90" step="0.5" placeholder="70" /></label>
       <label>Weight (lbs) <input type="number" id="weight" min="60" max="500" step="0.1" placeholder="170" /></label>
@@ -82,20 +104,20 @@
 
   <!-- ============ RESULT ============ -->
   <section class="panel hidden" id="result-panel">
-    <h2>3 · Result</h2>
+    <h2>📊 Result</h2>
     <div id="result-card">
       <div id="bf-number">—</div>
       <div id="bf-category"></div>
       <div id="bf-detail"></div>
     </div>
-    <div class="controls"><button id="btn-save">💾 Save Today's Data Point</button></div>
+    <div class="controls"><button id="btn-save">💾 Save Today's Scan</button></div>
     <p class="disclaimer">Visual estimate for personal tracking only — not a medical measurement or medical advice.</p>
   </section>
 
   <!-- ============ SIX-PACK PLAN ============ -->
   <section class="panel" id="plan-panel">
     <h2>🎯 Six-Pack Plan <span class="pill">science, not magic</span></h2>
-    <p class="hint-left">Uses your height, weight, age & sex from above. Pick your lifestyle and daily calorie deficit — get your exact roadmap to visible abs.</p>
+    <p class="hint-left">Uses your height, weight, age &amp; sex from above. Pick your lifestyle and daily calorie deficit — get your exact roadmap to visible abs.</p>
     <div class="grid" style="margin-top:10px">
       <label>Current body fat %
         <input type="number" id="plan-bf" min="3" max="60" step="0.1" placeholder="auto from last scan" />
@@ -125,7 +147,7 @@
     </div>
     <div class="controls"><button id="btn-plan">🧮 Calculate My Roadmap</button></div>
     <div id="plan-result" class="hidden"></div>
-    <p class="disclaimer">Estimates based on Mifflin-St Jeor BMR & the 3,500 kcal/lb rule. Not medical advice — consult a professional before aggressive deficits.</p>
+    <p class="disclaimer">Estimates based on Mifflin-St Jeor BMR &amp; the 3,500 kcal/lb rule. Not medical advice — consult a professional before aggressive deficits.</p>
   </section>
 
   <!-- ============ PROGRESS ============ -->
@@ -179,12 +201,18 @@
   </section>
 </main>
 
+<!-- video replay modal -->
+<div id="vt-modal" class="hidden">
+  <div class="vt-close" id="vt-close">✕</div>
+  <video id="vt-video" controls playsinline autoplay></video>
+</div>
+
 <footer>
   <p>Reddy-Fit by <a href="https://dandaakhilreddy.com" target="_blank">Akhil Reddy Danda</a> ·
      <a href="https://github.com/DandaAkhilReddy/bodyfatscanner" target="_blank">GitHub</a> ·
-     Pose AI runs in your browser · Your photos are private to your account</p>
+     Pose AI runs in your browser · Photos &amp; videos stored privately &amp; durably in the cloud</p>
 </footer>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

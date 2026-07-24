@@ -306,6 +306,8 @@ async function loadEntries() {
     ? `${entries.length} day${entries.length > 1 ? "s" : ""} logged — consistency wins 🔥`
     : "No entries yet — scan and save your first day!";
   updateReelPanel();
+  renderStreak();
+  renderVideoTimeline();
 
   // chart
   if (chart) chart.destroy();
@@ -365,6 +367,99 @@ async function renderCompare() {
 }
 $("cmp-before").addEventListener("change", renderCompare);
 $("cmp-after").addEventListener("change", renderCompare);
+
+/* ================= STREAK DASHBOARD ================= */
+function isoDay(d) { return d.toISOString().slice(0, 10); }
+
+function renderStreak() {
+  const today = isoDay(new Date());
+  const days = new Set(entries.map((e) => e.entry_date));
+  const videoDays = entries.filter((e) => e.has_video).length;
+
+  // consecutive-day streak ending today (or yesterday, so a not-yet-done
+  // today doesn't wipe the streak until the day is actually missed)
+  let streak = 0;
+  const cur = new Date();
+  if (!days.has(today)) cur.setDate(cur.getDate() - 1);
+  while (days.has(isoDay(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
+
+  $("stat-streak").textContent = streak;
+  $("stat-total").textContent = entries.length;
+  $("stat-videos").textContent = videoDays;
+  const done = days.has(today);
+  $("stat-today").textContent = done ? "✅" : "⬜";
+  $("stat-today").title = done ? "Scanned today" : "Not scanned yet today";
+}
+
+/* ================= DAILY VIDEO TIMELINE ================= */
+async function authedMediaURL(entryId, kind) {
+  const r = await fetch(`/api/entries/${entryId}/${kind}`, {headers: {Authorization: "Bearer " + TOKEN}});
+  if (!r.ok) return null;
+  return URL.createObjectURL(await r.blob());
+}
+
+function openVideoModal(url) {
+  const m = $("vt-modal"), v = $("vt-video");
+  v.src = url; m.classList.remove("hidden");
+  v.play().catch(() => {});
+}
+function closeVideoModal() {
+  const m = $("vt-modal"), v = $("vt-video");
+  v.pause(); v.removeAttribute("src"); v.load();
+  m.classList.add("hidden");
+}
+$("vt-close").addEventListener("click", closeVideoModal);
+$("vt-modal").addEventListener("click", (e) => { if (e.target.id === "vt-modal") closeVideoModal(); });
+
+async function renderVideoTimeline() {
+  const tl = $("video-timeline");
+  const media = entries.filter((e) => e.has_video || e.has_image);
+  if (!media.length) { tl.innerHTML = ""; return; }
+  // build cards first (fast), then lazily load thumbnails
+  tl.innerHTML = media.map((e, i) => {
+    const badge = e.has_video ? "🎥" : "📷";
+    return `<div class="vt-item" data-id="${e.id}" data-video="${e.has_video ? 1 : 0}">
+      <div class="vt-thumb" id="thumb-${e.id}">
+        <span class="vt-day">DAY ${i + 1}</span>
+        ${e.has_video ? '<span class="vt-play">▶</span>' : ''}
+      </div>
+      <div class="vt-meta"><b>${e.entry_date} ${badge}</b><br>${e.weight_lbs ?? "—"} lbs · ${e.bf_percent ?? "—"}% bf</div>
+    </div>`;
+  }).join("");
+
+  // click -> replay video (or open image in modal-less new tab)
+  tl.querySelectorAll(".vt-item").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const id = el.dataset.id;
+      if (el.dataset.video === "1") {
+        const url = await authedMediaURL(id, "video");
+        if (url) openVideoModal(url);
+      } else {
+        const url = await authedMediaURL(id, "image");
+        if (url) window.open(url, "_blank");
+      }
+    });
+  });
+
+  // lazy thumbnails: photo -> <img>; video-only -> muted <video> first frame
+  for (const e of media) {
+    const box = $("thumb-" + e.id);
+    if (!box) continue;
+    try {
+      if (e.has_image) {
+        const url = await authedMediaURL(e.id, "image");
+        if (url) { const img = new Image(); img.src = url; box.prepend(img); }
+      } else if (e.has_video) {
+        const url = await authedMediaURL(e.id, "video");
+        if (url) {
+          const v = document.createElement("video");
+          v.src = url; v.muted = true; v.playsInline = true; v.preload = "metadata";
+          box.prepend(v);
+        }
+      }
+    } catch {}
+  }
+}
 
 /* ================= SIX-PACK PLAN ================= */
 function sixPackPlan() {
