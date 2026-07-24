@@ -34,8 +34,14 @@ def test_live_homepage_serves():
 
 
 def test_live_otp_endpoint_reachable():
-    data = json.dumps({"email": "smoke-probe@example.org"}).encode()
+    """Liveness check with NO side effects: an invalid email must be rejected 400.
+    This exercises the auth route without sending a real email or tripping rate limits."""
+    import urllib.error
+    data = json.dumps({"email": "not-a-valid-email"}).encode()
     req = urllib.request.Request(BASE + "/api/auth/request-otp", data=data,
                                  headers={**UA, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=25) as r:
-        assert r.status == 200 and json.loads(r.read())["sent"] is True
+    try:
+        urllib.request.urlopen(req, timeout=25)
+        assert False, "invalid email should have been rejected"
+    except urllib.error.HTTPError as e:
+        assert e.code == 400, f"expected 400, got {e.code}"
