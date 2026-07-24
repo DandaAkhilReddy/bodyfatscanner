@@ -148,3 +148,42 @@ def test_admin_stats_and_delete(client, login, monkeypatch):
 
 def test_health(client):
     assert client.get("/api/health").json()["app"] == "Reddy-Fit Body Scanner"
+
+
+# ---------------------------------------------------------------- functional: entry math + edge cases
+def test_entries_sorted_ascending_by_date(client, login, fake_jpeg):
+    h, _ = login()
+    for day in ["2026-07-20", "2026-07-18", "2026-07-19"]:
+        client.post("/api/entries", json={"entry_date": day, "weight_lbs": 170,
+                                          "image_base64": fake_jpeg}, headers=h)
+    dates = [e["entry_date"] for e in client.get("/api/entries", headers=h).json()]
+    assert dates == sorted(dates), "entries must come back chronological for the chart"
+
+
+def test_full_field_entry_roundtrip(client, login, fake_jpeg):
+    h, _ = login()
+    payload = {"entry_date": "2026-07-21", "weight_lbs": 172.4, "height_in": 70,
+               "age": 28, "sex": "male", "bf_percent": 19.7, "bmi": 24.7,
+               "waist_shoulder_ratio": 0.74, "notes": "post-workout", "image_base64": fake_jpeg}
+    client.post("/api/entries", json=payload, headers=h)
+    e = client.get("/api/entries", headers=h).json()[0]
+    for k in ("weight_lbs", "bf_percent", "bmi", "sex", "notes"):
+        assert e[k] == payload[k]
+
+
+def test_delete_nonexistent_entry(client, login):
+    h, _ = login()
+    assert client.delete("/api/entries/does-not-exist", headers=h).status_code == 404
+
+
+def test_video_media_type_flag(client, login, fake_jpeg, fake_webm):
+    h, _ = login()
+    client.post("/api/entries", json={"entry_date": "2026-07-22",
+                "image_base64": fake_jpeg, "video_base64": fake_webm()}, headers=h)
+    e = client.get("/api/entries", headers=h).json()[0]
+    assert e["media_type"] == "video" and e["has_video"] == 1 and e["has_image"] == 1
+
+
+def test_health_reports_admin_and_email_flags(client):
+    j = client.get("/api/health").json()
+    assert "email_configured" in j and "azure_enabled" in j
